@@ -4,6 +4,43 @@ using System.Windows.Forms;
 
 namespace StayFocus
 {
+    /// <summary>
+    /// A button on a note's top bar. A click runs its action; pressing it and moving the mouse moves the note
+    /// instead, so the whole bar works as a handle even when buttons cover it.
+    /// </summary>
+    class HeaderButton : Label
+    {
+        Point pressedAt;
+        bool dragged;
+
+        public event EventHandler DragStarted;
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                pressedAt = e.Location;
+                dragged = false;
+            }
+            base.OnMouseDown(e);
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            if (e.Button != MouseButtons.Left || dragged) return;
+            Size slack = SystemInformation.DragSize;
+            if (Math.Abs(e.X - pressedAt.X) <= slack.Width && Math.Abs(e.Y - pressedAt.Y) <= slack.Height) return;
+            dragged = true;
+            if (DragStarted != null) DragStarted(this, EventArgs.Empty);
+        }
+
+        protected override void OnClick(EventArgs e)
+        {
+            if (!dragged) base.OnClick(e); // the press that moved the note is not a click
+        }
+    }
+
     /// <summary>One sticky note: a borderless colored window with a small toolbar and a text area.</summary>
     class NoteForm : Form
     {
@@ -399,7 +436,7 @@ namespace StayFocus
 
         Label AddButton(string text, Font font, string tip, int x, int width, AnchorStyles side, EventHandler onClick)
         {
-            Label button = new Label();
+            HeaderButton button = new HeaderButton();
             button.AutoSize = false;
             button.UseMnemonic = false;
             button.Text = text;
@@ -411,6 +448,12 @@ namespace StayFocus
             button.Anchor = AnchorStyles.Top | side;
             button.MouseEnter += delegate { button.BackColor = Ui.Hover(header.BackColor); };
             button.MouseLeave += delegate { button.BackColor = Color.Transparent; };
+            // The buttons fill the bar, so the note can also be moved by dragging any of them.
+            button.DragStarted += delegate
+            {
+                button.BackColor = Color.Transparent;
+                StartMove();
+            };
             if (onClick != null) button.Click += onClick;
             if (tip.Length > 0) tips.SetToolTip(button, tip);
             header.Controls.Add(button);
@@ -419,8 +462,12 @@ namespace StayFocus
 
         void OnHeaderMouseDown(object sender, MouseEventArgs e)
         {
-            if (e.Button != MouseButtons.Left) return;
-            // Hand the drag to Windows as if the bar were a normal title bar.
+            if (e.Button == MouseButtons.Left) StartMove();
+        }
+
+        /// <summary>Hands the drag to Windows as if the bar were a normal title bar.</summary>
+        void StartMove()
+        {
             Native.ReleaseCapture();
             Native.SendMessage(Handle, Native.WM_NCLBUTTONDOWN, (IntPtr)Native.HTCAPTION, IntPtr.Zero);
         }
