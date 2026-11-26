@@ -1,0 +1,13 @@
+# Build output (run build.ps1 to recreate)
+bin/
+
+# Packaging output
+*.zip
+SHA256SUMS.txt
+
+# Editor / OS files
+.vs/
+.vscode/
+Thumbs.db
+desktop.ini
+*.tmp
