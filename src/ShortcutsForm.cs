@@ -84,6 +84,7 @@ namespace StayFocus
             ClientSize = new Size(380, y + 44);
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
+            Ui.StyleDialog(this);
             ResumeLayout(false);
             PerformLayout();
         }

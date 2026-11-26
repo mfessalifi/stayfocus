@@ -35,7 +35,9 @@ namespace StayFocus
         public static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
         public const uint SWP_NOSIZE = 0x1;
         public const uint SWP_NOMOVE = 0x2;
+        public const uint SWP_NOZORDER = 0x4;
         public const uint SWP_NOACTIVATE = 0x10;
+        public const uint SWP_FRAMECHANGED = 0x20;
 
         public const uint WDA_NONE = 0x0;
         public const uint WDA_MONITOR = 0x1;
@@ -43,6 +45,13 @@ namespace StayFocus
 
         [DllImport("user32.dll")]
         public static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint affinity);
+
+        // Dark mode: title bar color and dark scroll bars. Both only change how our own windows are drawn.
+        [DllImport("dwmapi.dll")]
+        public static extern int DwmSetWindowAttribute(IntPtr hWnd, int attribute, ref int value, int size);
+
+        [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
+        public static extern int SetWindowTheme(IntPtr hWnd, string subAppName, string subIdList);
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);

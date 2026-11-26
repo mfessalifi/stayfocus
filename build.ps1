@@ -1,5 +1,7 @@
 # Builds bin\StayFocusNotes.exe using the C# compiler that ships with Windows (.NET Framework 4.x).
 # Nothing to install. Run:  powershell -ExecutionPolicy Bypass -File build.ps1
+# -Name builds a test copy under another file name, next to the real one:  build.ps1 -Name StayFocusNotes-dev
+param([string]$Name = 'StayFocusNotes')
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 
@@ -12,7 +14,7 @@ if (-not (Test-Path $icon)) { & (Join-Path $root 'tools\make-icon.ps1') | Out-Nu
 
 $outDir = Join-Path $root 'bin'
 New-Item -ItemType Directory -Force $outDir | Out-Null
-$exe = Join-Path $outDir 'StayFocusNotes.exe'
+$exe = Join-Path $outDir "$Name.exe"
 
 & $csc /nologo /target:winexe /optimize+ /codepage:65001 `
     "/out:$exe" `

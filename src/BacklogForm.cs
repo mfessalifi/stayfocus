@@ -21,7 +21,8 @@ namespace StayFocus
             Note = note;
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer
                 | ControlStyles.ResizeRedraw, true);
-            Height = Ui.S(note.Data.Tags.Count > 0 ? 96 : 76); // one extra line when there are tags
+            // One extra line when there are tags or a reminder.
+            Height = Ui.S(note.Data.Tags.Count > 0 || note.Data.RemindAt != null ? 96 : 76);
             Margin = new Padding(Ui.S(6), Ui.S(6), Ui.S(6), 0);
             Cursor = Cursors.Hand;
         }
@@ -29,11 +30,10 @@ namespace StayFocus
         protected override void OnPaint(PaintEventArgs e)
         {
             int color = Ui.ClampColor(Note.Data.Color);
-            Color accent = Ui.HeaderColors[color];
             Graphics g = e.Graphics;
-            g.Clear(Ui.BodyColors[color]);
-            using (SolidBrush stripe = new SolidBrush(accent)) g.FillRectangle(stripe, 0, 0, Ui.S(6), Height);
-            using (Pen edge = new Pen(Ui.Darken(accent, hover ? 0.45f : 0.15f))) g.DrawRectangle(edge, 0, 0, Width - 1, Height - 1);
+            g.Clear(Ui.Body(color));
+            using (SolidBrush stripe = new SolidBrush(Ui.HeaderColors[color])) g.FillRectangle(stripe, 0, 0, Ui.S(6), Height);
+            using (Pen edge = new Pen(Ui.CardEdge(color, hover))) g.DrawRectangle(edge, 0, 0, Width - 1, Height - 1);
 
             // First line is the title, the rest is a two-line preview.
             string text = (Note.Data.Text ?? "").Trim();
@@ -43,22 +43,49 @@ namespace StayFocus
 
             bool done = NoteStatus.Clamp(Note.Data.Status) == NoteStatus.Done;
             bool empty = title.Length == 0;
-            Color gray = Color.FromArgb(0x70, 0x70, 0x70);
+            Color gray = Ui.Faint;
             int left = Ui.S(16), width = Width - Ui.S(24);
 
+            // Checklist progress ("2/5") at the right of the title line.
+            int ticked, items;
+            Checklist.Count(text, out ticked, out items);
+            int titleWidth = width;
+            if (items > 0)
+            {
+                string progress = Checklist.Ticked + " " + ticked + "/" + items;
+                int progressWidth = TextRenderer.MeasureText(g, progress, SnippetFont, Size.Empty, TextFormatFlags.NoPrefix).Width;
+                titleWidth = Math.Max(0, width - progressWidth - Ui.S(6));
+                TextRenderer.DrawText(g, progress, SnippetFont,
+                    new Rectangle(left + width - progressWidth, Ui.S(8), progressWidth, Ui.S(20)),
+                    ticked == items ? Color.FromArgb(0x2E, 0x7D, 0x32) : gray,
+                    TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
+            }
+
             TextRenderer.DrawText(g, empty ? "(empty note)" : title, done ? TitleDoneFont : TitleFont,
-                new Rectangle(left, Ui.S(8), width, Ui.S(20)), empty || done ? gray : Ui.TextColor,
+                new Rectangle(left, Ui.S(8), titleWidth, Ui.S(20)), empty || done ? gray : Ui.Text,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine
                 | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
             TextRenderer.DrawText(g, rest, SnippetFont,
                 new Rectangle(left, Ui.S(31), width, Ui.S(36)), gray,
                 TextFormatFlags.Left | TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis
                 | TextFormatFlags.TextBoxControl | TextFormatFlags.NoPrefix);
-            if (Note.Data.Tags.Count > 0)
+            // Last line: the reminder (red once it is due), then the tags.
+            const TextFormatFlags oneLine = TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine
+                | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix;
+            int x = left;
+            DateTime remindAt;
+            if (Store.TryParseTime(Note.Data.RemindAt, out remindAt))
+            {
+                bool due = remindAt <= DateTime.Now;
+                string reminder = Reminder.Clock + " " + (due ? "Due " : "") + Reminder.Display(remindAt);
+                int reminderWidth = Math.Min(width, TextRenderer.MeasureText(g, reminder, SnippetFont, Size.Empty, TextFormatFlags.NoPrefix).Width);
+                TextRenderer.DrawText(g, reminder, SnippetFont, new Rectangle(x, Ui.S(70), reminderWidth, Ui.S(18)),
+                    due ? Ui.Alert : Ui.Accent(color), oneLine);
+                x += reminderWidth + Ui.S(8);
+            }
+            if (Note.Data.Tags.Count > 0 && x < left + width)
                 TextRenderer.DrawText(g, Tags.Display(Note.Data.Tags), SnippetFont,
-                    new Rectangle(left, Ui.S(70), width, Ui.S(18)), Ui.Darken(accent, 0.55f),
-                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine
-                    | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                    new Rectangle(x, Ui.S(70), left + width - x, Ui.S(18)), Ui.Accent(color), oneLine);
         }
 
         protected override void OnMouseEnter(EventArgs e)
@@ -98,6 +125,8 @@ namespace StayFocus
         readonly TextBox search = new TextBox();
         readonly ComboBox tagFilter = new ComboBox();
         readonly ToolStripMenuItem tagsItem = new ToolStripMenuItem("Tags");
+        readonly ToolStripMenuItem reminderItem = new ToolStripMenuItem("Reminder");
+        readonly Button trashButton = new Button();
         System.Collections.Generic.List<string> filterTags = new System.Collections.Generic.List<string>();
         string selectedTag; // null = all tags
         bool rebuilding;
@@ -116,8 +145,7 @@ namespace StayFocus
             Text = "StayFocus Notes - Backlog";
             Icon = Ui.LoadIcon(new Size(32, 32));
             Font = new Font("Segoe UI", 9f);
-            BackColor = Color.White;
-            MinimumSize = new Size(Ui.S(680), Ui.S(360));
+            MinimumSize = new Size(Ui.S(720), Ui.S(360));
 
             bool savedIsUsable = false;
             if (savedBounds.Width > 0 && savedBounds.Height > 0)
@@ -149,7 +177,6 @@ namespace StayFocus
                 Label header = new Label();
                 header.Dock = DockStyle.Fill;
                 header.Font = headerFont;
-                header.ForeColor = Color.FromArgb(0x44, 0x44, 0x44);
                 header.TextAlign = ContentAlignment.MiddleLeft;
                 header.Margin = new Padding(Ui.S(6), 0, Ui.S(4), 0);
                 headers[i] = header;
@@ -160,7 +187,6 @@ namespace StayFocus
                 column.FlowDirection = FlowDirection.TopDown;
                 column.WrapContents = false;
                 column.AutoScroll = true;
-                column.BackColor = Color.FromArgb(0xF1, 0xF2, 0xF4);
                 column.Margin = new Padding(Ui.S(4));
                 column.ClientSizeChanged += delegate { FitCards(column); };
                 columns[i] = column;
@@ -200,6 +226,18 @@ namespace StayFocus
             bar.Controls.Add(tagLabel);
 
             tagFilter.DropDownStyle = ComboBoxStyle.DropDownList;
+            // Drawn by us: a standard drop-down list ignores the theme colors and stays white in the dark theme.
+            tagFilter.DrawMode = DrawMode.OwnerDrawFixed;
+            tagFilter.DrawItem += delegate(object sender, DrawItemEventArgs e)
+            {
+                bool inList = (e.State & DrawItemState.ComboBoxEdit) == 0;
+                bool selected = (e.State & DrawItemState.Selected) != 0;
+                using (SolidBrush back = new SolidBrush(inList && selected ? Ui.Selection : Ui.Field))
+                    e.Graphics.FillRectangle(back, e.Bounds);
+                if (e.Index < 0) return;
+                TextRenderer.DrawText(e.Graphics, tagFilter.Items[e.Index].ToString(), tagFilter.Font, e.Bounds, Ui.WindowText,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
+            };
             tagFilter.SetBounds(Ui.S(420), Ui.S(13), Ui.S(160), Ui.S(24));
             tagFilter.SelectedIndexChanged += delegate
             {
@@ -210,15 +248,39 @@ namespace StayFocus
             };
             bar.Controls.Add(tagFilter);
 
+            Controls.Add(bar); // docked now, so the bar has its real width for the right-aligned controls below
+
+            trashButton.Text = "Trash";
+            trashButton.FlatStyle = FlatStyle.System;
+            trashButton.SetBounds(bar.ClientSize.Width - Ui.S(16) - Ui.S(96), Ui.S(11), Ui.S(96), Ui.S(28));
+            trashButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            trashButton.Click += delegate { this.app.ShowTrash(); };
+            bar.Controls.Add(trashButton);
+
             Label hint = new Label();
-            hint.AutoSize = true;
-            hint.ForeColor = SystemColors.GrayText;
-            hint.Text = "Drag cards between columns. Double-click to open. Right-click for more.";
-            hint.Location = new Point(Ui.S(598), Ui.S(17));
+            hint.AutoSize = false;
+            hint.AutoEllipsis = true;
+            hint.Tag = "faint";
+            hint.Text = "Drag cards to move them. Right-click for more.";
+            hint.SetBounds(Ui.S(598), Ui.S(17), Math.Max(0, trashButton.Left - Ui.S(598) - Ui.S(10)), Ui.S(18));
+            hint.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             bar.Controls.Add(hint);
-            Controls.Add(bar);
 
             BuildCardMenu();
+            ApplyTheme();
+        }
+
+        /// <summary>Gives the board the colors of the current theme.</summary>
+        public void ApplyTheme()
+        {
+            Ui.Style(this);
+            for (int i = 0; i < columns.Length; i++)
+            {
+                headers[i].ForeColor = Ui.Heading;
+                columns[i].BackColor = Ui.Panel;
+                Ui.DarkScrollBars(columns[i]);
+            }
+            if (Visible) Rebuild(); // cards and the "nothing here" lines pick up the new colors
         }
 
         /// <summary>Redraws every column from the current notes, keeping each column's scroll position.</summary>
@@ -251,7 +313,7 @@ namespace StayFocus
                 {
                     Label none = new Label();
                     none.AutoSize = true;
-                    none.ForeColor = SystemColors.GrayText;
+                    none.ForeColor = Ui.Faint;
                     none.Text = filter.Length > 0 || selectedTag != null ? "No match" : "Nothing here";
                     none.Margin = new Padding(Ui.S(10), Ui.S(10), 0, 0);
                     AcceptDrops(none, status);
@@ -263,6 +325,7 @@ namespace StayFocus
                 column.AutoScrollPosition = new Point(0, scrollY);
                 headers[status].Text = NoteStatus.Names[status].ToUpper() + "   " + count;
             }
+            trashButton.Text = app.TrashCount == 0 ? "Trash" : "Trash (" + app.TrashCount + ")";
             ResumeLayout();
         }
 
@@ -391,9 +454,10 @@ namespace StayFocus
             }
             cardMenu.Items.Add(new ToolStripSeparator());
             cardMenu.Items.Add(tagsItem);
+            cardMenu.Items.Add(reminderItem);
             cardMenu.Items.Add(new ToolStripSeparator());
-            cardMenu.Items.Add(new ToolStripMenuItem("Delete", null,
-                delegate { if (menuTarget != null) app.DeleteNoteWithConfirm(menuTarget, this); }));
+            cardMenu.Items.Add(new ToolStripMenuItem("Delete (to the trash)", null,
+                delegate { if (menuTarget != null) app.DeleteNote(menuTarget); }));
 
             cardMenu.Opening += delegate(object sender, System.ComponentModel.CancelEventArgs e)
             {
@@ -405,6 +469,7 @@ namespace StayFocus
                 }
                 menuTarget = card.Note;
                 app.FillTagMenu(tagsItem.DropDownItems, menuTarget, this);
+                app.FillReminderMenu(reminderItem.DropDownItems, menuTarget, this);
                 foreach (ToolStripItem item in cardMenu.Items)
                     if (item.Tag is int) item.Enabled = (int)item.Tag != NoteStatus.Clamp(menuTarget.Data.Status);
             };
