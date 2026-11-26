@@ -17,6 +17,8 @@ Sticky notes for the Windows desktop that appear and disappear with one keyboard
 
 ![The backlog board](docs/backlog.png)
 
+![The same notes in the dark theme](docs/dark.png)
+
 ## Install
 
 Requires Windows 10 or 11.
