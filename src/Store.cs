@@ -22,6 +22,12 @@ namespace StayFocus
         {
             return status >= ToDo && status <= Archive ? status : ToDo;
         }
+
+        /// <summary>Done and archived notes are finished business: they carry no reminder.</summary>
+        public static bool IsClosed(int status)
+        {
+            return status == Done || status == Archive;
+        }
     }
 
     [DataContract]
@@ -210,7 +216,7 @@ namespace StayFocus
                 if (string.IsNullOrEmpty(note.Id)) note.Id = Guid.NewGuid().ToString("N");
                 note.Status = NoteStatus.Clamp(note.Status);
                 note.Tags = Tags.CleanList(note.Tags);
-                if (!TryParseTime(note.RemindAt, out parsed)) note.RemindAt = null;
+                if (!TryParseTime(note.RemindAt, out parsed) || NoteStatus.IsClosed(note.Status)) note.RemindAt = null;
             }
             return notes;
         }

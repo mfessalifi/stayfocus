@@ -82,7 +82,9 @@ A tag is one word (letters, digits and `- _ . / +`, up to 24 characters); a note
 
 Click the bell on a note and choose a time: in 15 minutes, in 1 hour, tomorrow at 09:00, next Monday, or any day and time. The time is shown at the bottom of the note and on its card.
 
-When the time comes, the note appears on top of your other windows (even if notes are hidden or the note is archived), its top bar blinks for a few seconds, and the tray shows a message. The reminder then reads **Due** in red until you click it and either pick a later time or remove it. A reminder that came due while the PC was off is shown the next time the app starts.
+When the time comes, the note appears on top of your other windows (even if notes are hidden), its top bar blinks for a few seconds, and the tray shows a message. The reminder then reads **Due** in red until you click it and either pick a later time or remove it. A reminder that came due while the PC was off is shown the next time the app starts.
+
+Reminders are for open notes only: moving a note to **Done** or **Archive** removes its reminder.
 
 ### Quick search
 

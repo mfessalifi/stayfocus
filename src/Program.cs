@@ -189,6 +189,7 @@ namespace StayFocus
             string failedHotkey = RegisterHotkeys();
             if (data.NotesVisible) ShowNotes(false);
             CheckReminders(); // reminders that came due while the app was not running
+            ScheduleSave(); // write back whatever loading repaired (e.g. a reminder left on a note that is done)
 
             // Every few seconds: is a reminder due, has the day changed?
             clock = new System.Windows.Forms.Timer();
@@ -282,6 +283,7 @@ namespace StayFocus
             if (NoteStatus.Clamp(note.Data.Status) == status) return;
             note.Data.Status = status;
             note.RefreshLook();
+            if (NoteStatus.IsClosed(status)) ClearReminder(note); // a finished note must not remind any more
 
             if (status == NoteStatus.Archive) note.Hide();
             else if (data.NotesVisible && !note.Visible)
@@ -296,6 +298,16 @@ namespace StayFocus
         public void NoteActivated(NoteForm note)
         {
             lastActive = note;
+        }
+
+        /// <summary>Drops a note's reminder and stops its alert. The caller saves and refreshes the board.</summary>
+        void ClearReminder(NoteForm note)
+        {
+            note.Data.RemindAt = null;
+            announced.Remove(note.Data);
+            if (balloonNote == note) balloonNote = null;
+            note.StopAlert();
+            note.RefreshReminder();
         }
 
         NoteData CreateNoteData(NoteForm near)
@@ -566,6 +578,13 @@ namespace StayFocus
         public void FillReminderMenu(ToolStripItemCollection items, NoteForm note, IWin32Window owner)
         {
             ClearMenu(items);
+            if (NoteStatus.IsClosed(NoteStatus.Clamp(note.Data.Status)))
+            {
+                ToolStripMenuItem none = new ToolStripMenuItem("Done and archived notes have no reminder");
+                none.Enabled = false;
+                items.Add(none);
+                return;
+            }
             DateTime now = DateTime.Now;
             DateTime current;
             bool has = Store.TryParseTime(note.Data.RemindAt, out current);
@@ -610,7 +629,7 @@ namespace StayFocus
 
         void SetReminder(NoteForm note, DateTime? when)
         {
-            if (!notes.Contains(note)) return;
+            if (!notes.Contains(note) || NoteStatus.IsClosed(NoteStatus.Clamp(note.Data.Status))) return;
             note.Data.RemindAt = when.HasValue ? Store.FormatTime(when.Value) : null;
             announced.Remove(note.Data);
             note.StopAlert();
@@ -632,6 +651,7 @@ namespace StayFocus
             {
                 DateTime when;
                 if (!Store.TryParseTime(note.Data.RemindAt, out when) || when > now) continue;
+                if (NoteStatus.IsClosed(NoteStatus.Clamp(note.Data.Status))) continue;
                 string already;
                 if (announced.TryGetValue(note.Data, out already) && already == note.Data.RemindAt) continue;
                 announced[note.Data] = note.Data.RemindAt;
