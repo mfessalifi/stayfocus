@@ -17,7 +17,7 @@ jobs:
     permissions:
       contents: write   # needed only to create the release on a tag
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build
         shell: pwsh
@@ -30,7 +30,7 @@ jobs:
           "$((Get-FileHash StayFocusNotes.zip -Algorithm SHA256).Hash.ToLower())  StayFocusNotes.zip" | Set-Content SHA256SUMS.txt
           Get-Content SHA256SUMS.txt
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: StayFocusNotes
           path: |
